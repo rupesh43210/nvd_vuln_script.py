@@ -1,0 +1,22 @@
+name: Super-Linter
+
+# Run this workflow every time a new commit is pushed to your repository
+on: push
+
+jobs:
+  super-lint:
+    name: Run Super-Linter
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Run Super-Linter
+      uses: github/super-linter@v4
+      env:
+        GITHUB_TOKEN: ${{ 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 }}
+        DEFAULT_BRANCH: main  # or 'master' if your default branch is named 'master'
+        LINTER_RULES_PATH: .github/linters  # You can place your custom linter rules here
+        VALIDATE_PYTHON: true  # This will ensure Python code is linted
+        VALIDATE_PYTHON_FLAKE8: true  # This will run flake8 linter for Python
