@@ -1,6 +1,8 @@
 import pandas as pd
 import requests
 
+
+
 NVD_URL = 'https://services.nvd.nist.gov/rest/json/cves/1.0'
 
 def read_input_excel(file_name):
