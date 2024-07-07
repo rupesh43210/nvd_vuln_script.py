@@ -1,9 +1,8 @@
 import pandas as pd
 import requests
+from time import sleep
 
-
-
-NVD_URL = 'https://services.nvd.nist.gov/rest/json/cves/1.0'
+NVD_URL = 'https://services.nvd.nist.gov/rest/json/cves/2.0'
 
 def read_input_excel(file_name):
     return pd.read_excel(file_name)
@@ -19,31 +18,35 @@ def fetch_vulnerabilities_from_nvd(component, version_prefix=None):
     # Adjust CPE matching string based on the version_prefix availability
     if version_prefix:
         params = {
-            'cpeMatchString': f'cpe:2.3:*:*:{component}:{version_prefix}*:*:*:*:*:*:*',
+            'cpeName': f'cpe:2.3:*:*:{component}:{version_prefix}*:*:*:*:*:*:*',
             'resultsPerPage': results_per_page,
             'startIndex': start_index
         }
     else:
         params = {
-            'cpeMatchString': f'cpe:2.3:*:*:{component}:*:*:*:*:*:*:*',
+            'cpeName': f'cpe:2.3:*:*:{component}:*:*:*:*:*:*:*',
             'resultsPerPage': results_per_page,
             'startIndex': start_index
         }
 
     while True:
         response = requests.get(NVD_URL, params=params)
+        if response.status_code == 429:
+            print("Rate limit reached. Waiting for 30 seconds before retrying...")
+            sleep(30)
+            continue
         data = response.json()
 
-        if 'result' not in data:
+        if 'vulnerabilities' not in data:
             print(f"Unexpected response for component {component} and version prefix {version_prefix}:")
             print(data)
             break
 
-        for item in data['result']['CVE_Items']:
+        for item in data['vulnerabilities']:
             cve_data = item['cve']
-            impact_data = item.get('impact', {})
-            base_metric_data = impact_data.get('baseMetricV3', {})
-            cve_id = cve_data['CVE_data_meta']['ID']
+            metrics = cve_data.get('metrics', {})
+            cvssv3 = metrics.get('cvssMetricV31', [{}])[0].get('cvssData', {})
+            cve_id = cve_data['id']
             
             if (component, version_prefix, cve_id) not in seen_vulnerabilities:
                 seen_vulnerabilities.add((component, version_prefix, cve_id))
@@ -52,17 +55,17 @@ def fetch_vulnerabilities_from_nvd(component, version_prefix=None):
                     'component': component,
                     'version': version_prefix if version_prefix else 'All',
                     'cve': cve_id,
-                    'description': cve_data['description']['description_data'][0]['value'],
-                    'cvss': base_metric_data.get('cvssV3', {}).get('baseScore', 'N/A'),
-                    'severity': base_metric_data.get('cvssV3', {}).get('baseSeverity', 'N/A'),
-                    'cvss_string': base_metric_data.get('cvssV3', {}).get('vectorString', 'N/A')
+                    'description': cve_data['descriptions'][0]['value'],
+                    'cvss': cvssv3.get('baseScore', 'N/A'),
+                    'severity': cvssv3.get('baseSeverity', 'N/A'),
+                    'cvss_string': cvssv3.get('vectorString', 'N/A')
                 })
 
             # Extract CPEs for the version of the component that was scanned
-            for node in item['configurations']['nodes']:
-                if 'cpe_match' in node:
-                    for cpe_data in node['cpe_match']:
-                        cpe_uri = cpe_data['cpe23Uri']
+            for cpe in cve_data.get('configurations', []):
+                for node in cpe.get('nodes', []):
+                    for cpe_match in node.get('cpeMatch', []):
+                        cpe_uri = cpe_match['criteria']
                         if cpe_uri not in seen_cpe_entries:
                             seen_cpe_entries.add(cpe_uri)
                             cpe_component_name = cpe_uri.split(':')[4]
@@ -73,7 +76,7 @@ def fetch_vulnerabilities_from_nvd(component, version_prefix=None):
                                 'cpe_component_name': cpe_component_name
                             })
 
-        if len(data['result']['CVE_Items']) < results_per_page:
+        if len(data['vulnerabilities']) < results_per_page:
             break
 
         start_index += results_per_page
@@ -82,7 +85,7 @@ def fetch_vulnerabilities_from_nvd(component, version_prefix=None):
     return vulnerabilities, cpe_entries
 
 def write_to_excel(vulnerabilities_data, cpe_data, output_file_name):
-    with pd.ExcelWriter(output_file_name) as writer:
+    with pd.ExcelWriter(output_file_name, engine='openpyxl') as writer:
         pd.DataFrame(vulnerabilities_data).to_excel(writer, sheet_name='vulns', index=False)
         pd.DataFrame(cpe_data).to_excel(writer, sheet_name='Comp_CPE', index=False)
 
