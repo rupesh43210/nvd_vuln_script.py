@@ -2,10 +2,13 @@ import pandas as pd
 import requests
 from time import sleep
 
+
 NVD_URL = 'https://services.nvd.nist.gov/rest/json/cves/2.0'
+
 
 def read_input_excel(file_name):
     return pd.read_excel(file_name)
+
 
 def fetch_vulnerabilities_from_nvd(component, version_prefix=None):
     vulnerabilities = []
@@ -14,7 +17,7 @@ def fetch_vulnerabilities_from_nvd(component, version_prefix=None):
     seen_cpe_entries = set()      # Track seen CPEs for uniqueness
     results_per_page = 2000
     start_index = 0
-    
+
     # Adjust CPE matching string based on the version_prefix availability
     if version_prefix:
         params = {
@@ -47,10 +50,10 @@ def fetch_vulnerabilities_from_nvd(component, version_prefix=None):
             metrics = cve_data.get('metrics', {})
             cvssv3 = metrics.get('cvssMetricV31', [{}])[0].get('cvssData', {})
             cve_id = cve_data['id']
-            
+
             if (component, version_prefix, cve_id) not in seen_vulnerabilities:
                 seen_vulnerabilities.add((component, version_prefix, cve_id))
-                
+
                 vulnerabilities.append({
                     'component': component,
                     'version': version_prefix if version_prefix else 'All',
@@ -84,10 +87,12 @@ def fetch_vulnerabilities_from_nvd(component, version_prefix=None):
 
     return vulnerabilities, cpe_entries
 
+
 def write_to_excel(vulnerabilities_data, cpe_data, output_file_name):
     with pd.ExcelWriter(output_file_name, engine='openpyxl') as writer:
         pd.DataFrame(vulnerabilities_data).to_excel(writer, sheet_name='vulns', index=False)
         pd.DataFrame(cpe_data).to_excel(writer, sheet_name='Comp_CPE', index=False)
+
 
 def main():
     input_file_name = 'input.xlsx'
@@ -106,6 +111,7 @@ def main():
         all_cpe_entries.extend(cpe_entries)
 
     write_to_excel(all_vulnerabilities, all_cpe_entries, output_file_name)
+
 
 if __name__ == '__main__':
     main()
